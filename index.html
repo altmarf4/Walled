@@ -1,0 +1,688 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wallrace</title>
+<meta name="description" content="A two-player strategy board game: race to the far side and block your opponent with walls, but never trap them completely.">
+<style>
+  :root {
+    --bg: #f4f1ea;
+    --panel: #ffffff;
+    --text: #1f2328;
+    --muted: #6b6f76;
+    --board: #2b2f36;
+    --cell: #3a4049;
+    --cell-hover: #4a525d;
+    --cell-move: #55606d;
+    --wall: #e2b04a;
+    --wall-ghost: rgba(226, 176, 74, 0.45);
+    --wall-bad: rgba(220, 70, 70, 0.55);
+    --p0: #4f9cf7;
+    --p1: #f2706a;
+    --goal0: rgba(79, 156, 247, 0.18);
+    --goal1: rgba(242, 112, 106, 0.18);
+    --border: #ddd8cc;
+    --btn: #1f2328;
+    --btn-text: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #15171b;
+      --panel: #1e2126;
+      --text: #e8e6e1;
+      --muted: #9aa0a8;
+      --board: #0e1013;
+      --cell: #2a2f37;
+      --cell-hover: #363d47;
+      --cell-move: #435060;
+      --border: #2e333a;
+      --btn: #e8e6e1;
+      --btn-text: #15171b;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    min-height: 100vh;
+  }
+  .wrap {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 20px 16px 40px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 280px;
+    gap: 20px;
+    align-items: start;
+  }
+  header { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  h1 { margin: 0; font-size: 26px; letter-spacing: -0.02em; }
+  header p { margin: 0; color: var(--muted); }
+  .board-wrap { position: relative; width: 100%; }
+  svg#board { width: 100%; height: auto; display: block; touch-action: manipulation; user-select: none; border-radius: 14px; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .players { display: grid; gap: 8px; }
+  .player {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border-radius: 10px; border: 2px solid transparent;
+  }
+  .player.active { border-color: currentColor; }
+  .player .dot { width: 14px; height: 14px; border-radius: 50%; flex: none; }
+  .player .name { flex: 1; color: var(--text); font-weight: 600; }
+  .player .walls { color: var(--text); font-variant-numeric: tabular-nums; }
+  .wallbar { display: inline-flex; gap: 2px; vertical-align: middle; margin-left: 6px; }
+  .wallbar i { width: 4px; height: 14px; background: var(--wall); border-radius: 1px; }
+  .wallbar i.used { background: var(--border); }
+  #status { font-weight: 600; min-height: 1.45em; }
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+  select, button {
+    font: inherit; border-radius: 8px; padding: 8px 12px;
+    border: 1px solid var(--border); background: var(--panel); color: var(--text);
+  }
+  select { width: 100%; }
+  button { cursor: pointer; }
+  button.primary { background: var(--btn); color: var(--btn-text); border-color: var(--btn); }
+  button:disabled { opacity: 0.45; cursor: default; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .row > * { flex: 1; }
+  .hint { font-size: 13px; color: var(--muted); margin: 0; }
+  kbd { font: 12px ui-monospace, monospace; border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; }
+  #history {
+    font: 13px ui-monospace, SFMono-Regular, Menlo, monospace;
+    max-height: 180px; overflow-y: auto; margin: 0; padding: 0; list-style: none;
+    display: grid; grid-template-columns: 2em 1fr 1fr; gap: 2px 8px;
+  }
+  #history .n { color: var(--muted); }
+  details summary { cursor: pointer; font-weight: 600; }
+  details ul { padding-left: 18px; margin: 8px 0 0; }
+  .overlay {
+    position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, 0.45); border-radius: 14px;
+  }
+  .overlay.show { display: flex; }
+  .overlay .card {
+    background: var(--panel); color: var(--text); padding: 22px 26px; border-radius: 14px;
+    text-align: center; display: grid; gap: 12px; max-width: 80%;
+  }
+  .overlay h2 { margin: 0; }
+  @media (max-width: 760px) {
+    .wrap { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Wallrace</h1>
+    <p>Reach the far side first. Block with walls, but never seal anyone in.</p>
+  </header>
+
+  <div class="board-wrap">
+    <svg id="board" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div class="overlay" id="overlay">
+      <div class="card">
+        <h2 id="winText"></h2>
+        <button class="primary" id="againBtn">Play again</button>
+      </div>
+    </div>
+  </div>
+
+  <aside class="panel">
+    <div class="players">
+      <div class="player" id="pl0" style="color: var(--p0)">
+        <span class="dot" style="background: var(--p0)"></span>
+        <span class="name" id="name0">Blue</span>
+        <span class="walls"><span id="w0">10</span><span class="wallbar" id="bar0"></span></span>
+      </div>
+      <div class="player" id="pl1" style="color: var(--p1)">
+        <span class="dot" style="background: var(--p1)"></span>
+        <span class="name" id="name1">Red</span>
+        <span class="walls"><span id="w1">10</span><span class="wallbar" id="bar1"></span></span>
+      </div>
+    </div>
+    <div id="status"></div>
+    <div>
+      <label for="mode">Opponent</label>
+      <select id="mode">
+        <option value="ai1">Computer (easy)</option>
+        <option value="ai2" selected>Computer (medium)</option>
+        <option value="ai3">Computer (hard)</option>
+        <option value="local">Two players, same device</option>
+      </select>
+    </div>
+    <div class="row">
+      <button class="primary" id="newBtn">New game</button>
+      <button id="undoBtn">Undo</button>
+    </div>
+    <p class="hint">Click a highlighted square to move. Point at a groove between squares to place a wall. At a crossing, press <kbd>R</kbd> or right-click to rotate. On touch screens, tap once to preview a wall and again to place it.</p>
+    <div>
+      <label>Moves</label>
+      <ol id="history"></ol>
+    </div>
+    <details>
+      <summary>Rules</summary>
+      <ul>
+        <li>9×9 board. Blue starts at the bottom, Red at the top. Blue moves first.</li>
+        <li>Each turn, either move your pawn one square or place one wall. You have 10 walls.</li>
+        <li>A wall is two squares long. Walls can't overlap or cross.</li>
+        <li>A wall may never cut off a player's last route to their goal row.</li>
+        <li>If the pawns are face to face, you can jump over the other pawn. If a wall or the edge is behind it, step diagonally instead.</li>
+        <li>The first to reach the opposite row wins.</li>
+      </ul>
+    </details>
+  </aside>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  const N = 9;          // board size
+  const W = N - 1;      // wall anchor grid size
+  const WALLS = 10;
+  const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+  const GOAL = [0, N - 1]; // player 0 goes to row 0, player 1 to row 8
+
+  // ---------- game state ----------
+
+  function newState() {
+    return {
+      pawns: [{ r: N - 1, c: 4 }, { r: 0, c: 4 }],
+      h: Array.from({ length: W }, () => new Array(W).fill(false)),
+      v: Array.from({ length: W }, () => new Array(W).fill(false)),
+      wallsLeft: [WALLS, WALLS],
+      turn: 0,
+      winner: -1,
+    };
+  }
+
+  function cloneState(s) {
+    return {
+      pawns: s.pawns.map(p => ({ ...p })),
+      h: s.h.map(r => r.slice()),
+      v: s.v.map(r => r.slice()),
+      wallsLeft: s.wallsLeft.slice(),
+      turn: s.turn,
+      winner: s.winner,
+    };
+  }
+
+  const hAt = (s, r, c) => r >= 0 && r < W && c >= 0 && c < W && s.h[r][c];
+  const vAt = (s, r, c) => r >= 0 && r < W && c >= 0 && c < W && s.v[r][c];
+
+  // Can a pawn step from (r,c) one square in direction (dr,dc) without leaving the board or crossing a wall?
+  function canStep(s, r, c, dr, dc) {
+    const nr = r + dr, nc = c + dc;
+    if (nr < 0 || nr >= N || nc < 0 || nc >= N) return false;
+    if (dr === 1) return !(hAt(s, r, c) || hAt(s, r, c - 1));
+    if (dr === -1) return !(hAt(s, r - 1, c) || hAt(s, r - 1, c - 1));
+    if (dc === 1) return !(vAt(s, r, c) || vAt(s, r - 1, c));
+    return !(vAt(s, r, c - 1) || vAt(s, r - 1, c - 1));
+  }
+
+  function pawnMoves(s, p) {
+    const me = s.pawns[p], op = s.pawns[1 - p];
+    const out = [];
+    for (const [dr, dc] of DIRS) {
+      if (!canStep(s, me.r, me.c, dr, dc)) continue;
+      const nr = me.r + dr, nc = me.c + dc;
+      if (nr === op.r && nc === op.c) {
+        if (canStep(s, op.r, op.c, dr, dc)) {
+          out.push({ r: op.r + dr, c: op.c + dc });
+        } else {
+          for (const [sr, sc] of (dr !== 0 ? [[0, -1], [0, 1]] : [[-1, 0], [1, 0]])) {
+            if (canStep(s, op.r, op.c, sr, sc)) out.push({ r: op.r + sr, c: op.c + sc });
+          }
+        }
+      } else {
+        out.push({ r: nr, c: nc });
+      }
+    }
+    return out;
+  }
+
+  // Shortest distance to goal row (pawns ignored). Returns Infinity if unreachable.
+  // If withPath, also returns the list of squares along one shortest path.
+  const bfsDist = new Int16Array(N * N);
+  const bfsPrev = new Int16Array(N * N);
+  const bfsQueue = new Int16Array(N * N);
+  function shortest(s, p, withPath) {
+    bfsDist.fill(-1);
+    const start = s.pawns[p].r * N + s.pawns[p].c;
+    const goal = GOAL[p];
+    let head = 0, tail = 0;
+    bfsQueue[tail++] = start;
+    bfsDist[start] = 0;
+    bfsPrev[start] = -1;
+    while (head < tail) {
+      const cur = bfsQueue[head++];
+      const r = (cur / N) | 0, c = cur % N;
+      if (r === goal) {
+        if (!withPath) return bfsDist[cur];
+        const path = [];
+        for (let x = cur; x !== -1; x = bfsPrev[x]) path.push({ r: (x / N) | 0, c: x % N });
+        return { dist: bfsDist[cur], path: path.reverse() };
+      }
+      for (let i = 0; i < 4; i++) {
+        const dr = DIRS[i][0], dc = DIRS[i][1];
+        if (!canStep(s, r, c, dr, dc)) continue;
+        const nx = (r + dr) * N + (c + dc);
+        if (bfsDist[nx] !== -1) continue;
+        bfsDist[nx] = bfsDist[cur] + 1;
+        bfsPrev[nx] = cur;
+        bfsQueue[tail++] = nx;
+      }
+    }
+    return withPath ? { dist: Infinity, path: [] } : Infinity;
+  }
+
+  // Wall fits physically (no overlap / crossing)?
+  function wallFits(s, o, r, c) {
+    if (r < 0 || r >= W || c < 0 || c >= W) return false;
+    if (s.h[r][c] || s.v[r][c]) return false;
+    if (o === "h") return !(hAt(s, r, c - 1) || hAt(s, r, c + 1));
+    return !(vAt(s, r - 1, c) || vAt(s, r + 1, c));
+  }
+
+  function wallLegal(s, p, o, r, c) {
+    if (s.wallsLeft[p] <= 0 || !wallFits(s, o, r, c)) return false;
+    const grid = o === "h" ? s.h : s.v;
+    grid[r][c] = true;
+    const ok = shortest(s, 0) !== Infinity && shortest(s, 1) !== Infinity;
+    grid[r][c] = false;
+    return ok;
+  }
+
+  // move: {type:"move", r, c} or {type:"wall", o, r, c}
+  function applyMove(s, m) {
+    const p = s.turn;
+    if (m.type === "move") {
+      s.pawns[p] = { r: m.r, c: m.c };
+      if (m.r === GOAL[p]) s.winner = p;
+    } else {
+      (m.o === "h" ? s.h : s.v)[m.r][m.c] = true;
+      s.wallsLeft[p]--;
+    }
+    s.turn = 1 - p;
+  }
+
+  function undoMove(s, m, prevPawn) {
+    s.turn = 1 - s.turn;
+    const p = s.turn;
+    if (m.type === "move") {
+      s.pawns[p] = prevPawn;
+      s.winner = -1;
+    } else {
+      (m.o === "h" ? s.h : s.v)[m.r][m.c] = false;
+      s.wallsLeft[p]++;
+    }
+  }
+
+  // Notation: columns a–i left to right, rows 1–9 bottom to top.
+  // A wall is named by the square at its top-left anchor plus h/v.
+  function notation(m) {
+    const col = String.fromCharCode(97 + m.c);
+    const row = N - m.r;
+    return m.type === "move" ? col + row : col + row + m.o;
+  }
+
+  // ---------- computer opponent ----------
+
+  // Walls that cut an edge of the given path.
+  function wallsAlongPath(s, path, out, seen) {
+    const add = (o, r, c) => {
+      const k = o + r * W + c;
+      if (r < 0 || r >= W || c < 0 || c >= W || seen.has(k)) return;
+      seen.add(k);
+      out.push({ type: "wall", o, r, c });
+    };
+    for (let i = 0; i + 1 < path.length; i++) {
+      const a = path[i], b = path[i + 1];
+      if (a.c === b.c) {
+        const r = Math.min(a.r, b.r);
+        add("h", r, a.c); add("h", r, a.c - 1);
+      } else {
+        const c = Math.min(a.c, b.c);
+        add("v", a.r, c); add("v", a.r - 1, c);
+      }
+    }
+  }
+
+  function candidates(s) {
+    const p = s.turn;
+    const moves = pawnMoves(s, p).map(q => ({ type: "move", r: q.r, c: q.c }));
+    // Put the pawn move that follows our shortest path first for better pruning.
+    const mine = shortest(s, p, true);
+    if (mine.path.length > 1) {
+      const nxt = mine.path[1];
+      moves.sort((a, b) => (b.r === nxt.r && b.c === nxt.c) - (a.r === nxt.r && a.c === nxt.c));
+    }
+    if (s.wallsLeft[p] > 0) {
+      const opp = shortest(s, 1 - p, true);
+      const walls = [], seen = new Set();
+      wallsAlongPath(s, opp.path.slice(0, 6), walls, seen);
+      for (const w of walls) if (wallLegal(s, p, w.o, w.r, w.c)) moves.push(w);
+    }
+    return moves;
+  }
+
+  // Score from the point of view of player p.
+  function evaluate(s, p) {
+    if (s.winner === p) return 1000;
+    if (s.winner === 1 - p) return -1000;
+    const dMe = shortest(s, p), dOp = shortest(s, 1 - p);
+    // Having the move is worth about half a step.
+    const tempo = s.turn === p ? 0.5 : -0.5;
+    return (dOp - dMe) + tempo + 0.35 * (s.wallsLeft[p] - s.wallsLeft[1 - p]);
+  }
+
+  function negamax(s, depth, alpha, beta) {
+    if (depth === 0 || s.winner !== -1) return evaluate(s, s.turn);
+    let best = -Infinity;
+    for (const m of candidates(s)) {
+      const prev = s.pawns[s.turn];
+      applyMove(s, m);
+      const score = -negamax(s, depth - 1, -beta, -alpha);
+      undoMove(s, m, prev);
+      if (score > best) best = score;
+      if (best > alpha) alpha = best;
+      if (alpha >= beta) break;
+    }
+    return best;
+  }
+
+  function chooseMove(state, level) {
+    const s = cloneState(state);
+    const depth = level;
+    const noise = level === 1 ? 1.2 : 0.05;
+    let bestMove = null, bestScore = -Infinity;
+    for (const m of candidates(s)) {
+      const prev = s.pawns[s.turn];
+      applyMove(s, m);
+      let score = s.winner !== -1 ? 1000 : -negamax(s, depth - 1, -Infinity, Infinity);
+      undoMove(s, m, prev);
+      score += Math.random() * noise;
+      if (score > bestScore) { bestScore = score; bestMove = m; }
+    }
+    return bestMove;
+  }
+
+  // ---------- rendering ----------
+
+  const S = 56, G = 12, P = S + G, PAD = 14;
+  const SIZE = PAD * 2 + N * S + (N - 1) * G;
+  const svg = document.getElementById("board");
+  const NS = "http://www.w3.org/2000/svg";
+  svg.setAttribute("viewBox", `0 0 ${SIZE} ${SIZE}`);
+
+  const el = (tag, attrs, parent) => {
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  };
+
+  el("rect", { x: 0, y: 0, width: SIZE, height: SIZE, rx: 14, fill: "var(--board)" }, svg);
+  const cellEls = [];
+  for (let r = 0; r < N; r++) {
+    cellEls.push([]);
+    for (let c = 0; c < N; c++) {
+      cellEls[r].push(el("rect", { x: PAD + c * P, y: PAD + r * P, width: S, height: S, rx: 6, fill: "var(--cell)" }, svg));
+    }
+  }
+  // goal row tints
+  for (let c = 0; c < N; c++) {
+    el("rect", { x: PAD + c * P, y: PAD, width: S, height: S, rx: 6, fill: "var(--goal0)", "pointer-events": "none" }, svg);
+    el("rect", { x: PAD + c * P, y: PAD + (N - 1) * P, width: S, height: S, rx: 6, fill: "var(--goal1)", "pointer-events": "none" }, svg);
+  }
+  const moveDots = el("g", { "pointer-events": "none" }, svg);
+  const wallLayer = el("g", { "pointer-events": "none" }, svg);
+  const ghost = el("rect", { rx: 3, fill: "var(--wall-ghost)", "pointer-events": "none", visibility: "hidden" }, svg);
+  const pawnEls = [0, 1].map(p =>
+    el("circle", { r: S * 0.34, fill: `var(--p${p})`, stroke: "rgba(0,0,0,0.25)", "stroke-width": 2, "pointer-events": "none" }, svg));
+  pawnEls.forEach(e => e.style.transition = "cx 160ms ease, cy 160ms ease");
+  const lastMark = el("rect", { rx: 3, fill: "none", stroke: "#fff", "stroke-width": 2, "stroke-dasharray": "4 3", "pointer-events": "none", visibility: "hidden" }, svg);
+
+  function wallRect(o, r, c) {
+    return o === "h"
+      ? { x: PAD + c * P, y: PAD + r * P + S + 1, width: 2 * S + G, height: G - 2 }
+      : { x: PAD + c * P + S + 1, y: PAD + r * P, width: G - 2, height: 2 * S + G };
+  }
+
+  // ---------- controller ----------
+
+  let state, history, moveLog, legal, hover = null, preferH = true, aiThinking = false, pendingTouch = null;
+  const modeSel = document.getElementById("mode");
+  const statusEl = document.getElementById("status");
+  const historyEl = document.getElementById("history");
+  const overlay = document.getElementById("overlay");
+
+  const aiLevel = () => modeSel.value.startsWith("ai") ? Number(modeSel.value.slice(2)) : 0;
+  const isHuman = p => aiLevel() === 0 || p === 0;
+  const playerName = p => aiLevel() && p === 1 ? "Computer" : (p === 0 ? "Blue" : "Red");
+
+  function start() {
+    state = newState();
+    history = [];
+    moveLog = [];
+    hover = null;
+    pendingTouch = null;
+    overlay.classList.remove("show");
+    render();
+  }
+
+  function play(m) {
+    history.push(cloneState(state));
+    moveLog.push(m);
+    applyMove(state, m);
+    hover = null;
+    pendingTouch = null;
+    render();
+    if (state.winner !== -1) {
+      document.getElementById("winText").textContent =
+        aiLevel() && state.winner === 1 ? "The computer wins" : `${playerName(state.winner)} wins!`;
+      overlay.classList.add("show");
+      return;
+    }
+    maybeAI();
+  }
+
+  function maybeAI() {
+    if (state.winner !== -1 || isHuman(state.turn)) return;
+    aiThinking = true;
+    render();
+    // let the browser paint before thinking
+    setTimeout(() => {
+      const m = chooseMove(state, aiLevel());
+      aiThinking = false;
+      play(m);
+    }, 250);
+  }
+
+  function undo() {
+    if (aiThinking || !history.length) return;
+    // In computer games, step back to the human's previous turn.
+    do {
+      state = history.pop();
+      moveLog.pop();
+    } while (history.length && !isHuman(state.turn));
+    overlay.classList.remove("show");
+    hover = null;
+    pendingTouch = null;
+    render();
+    maybeAI();
+  }
+
+  function render() {
+    const p = state.turn;
+    const canAct = state.winner === -1 && isHuman(p) && !aiThinking;
+    legal = canAct ? pawnMoves(state, p) : [];
+
+    for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+      const isLegal = legal.some(q => q.r === r && q.c === c);
+      const isHover = hover && hover.type === "move" && hover.r === r && hover.c === c;
+      cellEls[r][c].setAttribute("fill", isHover && isLegal ? "var(--cell-move)" : "var(--cell)");
+    }
+    moveDots.replaceChildren();
+    for (const q of legal) {
+      el("circle", { cx: PAD + q.c * P + S / 2, cy: PAD + q.r * P + S / 2, r: 7, fill: `var(--p${p})`, opacity: 0.55 }, moveDots);
+    }
+
+    wallLayer.replaceChildren();
+    for (let r = 0; r < W; r++) for (let c = 0; c < W; c++) {
+      if (state.h[r][c]) el("rect", { ...wallRect("h", r, c), rx: 3, fill: "var(--wall)" }, wallLayer);
+      if (state.v[r][c]) el("rect", { ...wallRect("v", r, c), rx: 3, fill: "var(--wall)" }, wallLayer);
+    }
+
+    state.pawns.forEach((q, i) => {
+      pawnEls[i].setAttribute("cx", PAD + q.c * P + S / 2);
+      pawnEls[i].setAttribute("cy", PAD + q.r * P + S / 2);
+    });
+
+    const last = moveLog[moveLog.length - 1];
+    if (last) {
+      const rect = last.type === "move"
+        ? { x: PAD + last.c * P + 3, y: PAD + last.r * P + 3, width: S - 6, height: S - 6 }
+        : wallRect(last.o, last.r, last.c);
+      for (const k in rect) lastMark.setAttribute(k, rect[k]);
+      lastMark.setAttribute("visibility", last.type === "move" ? "hidden" : "visible");
+    } else {
+      lastMark.setAttribute("visibility", "hidden");
+    }
+
+    if (canAct && hover && hover.type === "wall") {
+      const ok = wallLegal(state, p, hover.o, hover.r, hover.c);
+      const rect = wallRect(hover.o, hover.r, hover.c);
+      for (const k in rect) ghost.setAttribute(k, rect[k]);
+      ghost.setAttribute("fill", ok ? "var(--wall-ghost)" : "var(--wall-bad)");
+      ghost.setAttribute("visibility", "visible");
+    } else {
+      ghost.setAttribute("visibility", "hidden");
+    }
+
+    for (const i of [0, 1]) {
+      document.getElementById("pl" + i).classList.toggle("active", state.winner === -1 && state.turn === i);
+      document.getElementById("name" + i).textContent = playerName(i);
+      document.getElementById("w" + i).textContent = state.wallsLeft[i];
+      const bar = document.getElementById("bar" + i);
+      bar.replaceChildren(...Array.from({ length: WALLS }, (_, k) => {
+        const t = document.createElement("i");
+        if (k >= state.wallsLeft[i]) t.className = "used";
+        return t;
+      }));
+    }
+
+    if (state.winner !== -1) statusEl.textContent = `${playerName(state.winner)} reached the goal.`;
+    else if (aiThinking) statusEl.textContent = "Computer is thinking…";
+    else statusEl.textContent = `${playerName(p)} to play`;
+
+    historyEl.replaceChildren();
+    for (let i = 0; i < moveLog.length; i += 2) {
+      const n = document.createElement("li");
+      n.className = "n";
+      n.textContent = i / 2 + 1 + ".";
+      const a = document.createElement("li");
+      a.textContent = notation(moveLog[i]);
+      const b = document.createElement("li");
+      b.textContent = moveLog[i + 1] ? notation(moveLog[i + 1]) : "";
+      historyEl.append(n, a, b);
+    }
+    historyEl.scrollTop = historyEl.scrollHeight;
+    document.getElementById("undoBtn").disabled = aiThinking || history.length === 0;
+  }
+
+  // Map a pointer position to a target: a square, or a wall slot.
+  function targetAt(evt) {
+    const pt = svg.createSVGPoint();
+    pt.x = evt.clientX; pt.y = evt.clientY;
+    const loc = pt.matrixTransform(svg.getScreenCTM().inverse());
+    const lx = loc.x - PAD, ly = loc.y - PAD;
+    if (lx < 0 || ly < 0 || lx > SIZE - 2 * PAD || ly > SIZE - 2 * PAD) return null;
+    const cx = Math.floor(lx / P), cy = Math.floor(ly / P);
+    const ox = lx - cx * P, oy = ly - cy * P;
+    const inGapX = ox >= S, inGapY = oy >= S;
+    const clamp = v => Math.max(0, Math.min(W - 1, v));
+    if (!inGapX && !inGapY) return { type: "move", r: cy, c: cx };
+    if (inGapX && inGapY) return { type: "wall", o: preferH ? "h" : "v", r: cy, c: cx };
+    if (inGapY) return cy < W ? { type: "wall", o: "h", r: cy, c: clamp(ox < S / 2 ? cx - 1 : cx) } : null;
+    return cx < W ? { type: "wall", o: "v", r: clamp(oy < S / 2 ? cy - 1 : cy), c: cx } : null;
+  }
+
+  const same = (a, b) => a && b && a.type === b.type && a.r === b.r && a.c === b.c && a.o === b.o;
+
+  svg.addEventListener("pointermove", e => {
+    if (e.pointerType === "touch") return;
+    const t = targetAt(e);
+    if (!same(t, hover)) { hover = t; render(); }
+  });
+  svg.addEventListener("pointerleave", () => { if (pendingTouch) return; hover = null; render(); });
+  svg.addEventListener("contextmenu", e => {
+    e.preventDefault();
+    preferH = !preferH;
+    if (hover && hover.type === "wall") {
+      const t = targetAt(e);
+      if (t) { hover = t; render(); }
+    }
+  });
+  svg.addEventListener("pointerup", e => {
+    if (e.button !== 0) return;
+    if (state.winner !== -1 || aiThinking || !isHuman(state.turn)) return;
+    const t = targetAt(e);
+    if (!t) return;
+    if (t.type === "move") {
+      if (legal.some(q => q.r === t.r && q.c === t.c)) play(t);
+      return;
+    }
+    // On touch, the first tap previews a wall and the second places it.
+    if (e.pointerType === "touch" && !same(t, pendingTouch)) {
+      pendingTouch = t;
+      hover = t;
+      render();
+      return;
+    }
+    if (wallLegal(state, state.turn, t.o, t.r, t.c)) play(t);
+  });
+  document.addEventListener("keydown", e => {
+    if (e.key === "r" || e.key === "R") {
+      preferH = !preferH;
+      if (hover && hover.type === "wall") {
+        hover = { ...hover, o: preferH ? "h" : "v" };
+        if (pendingTouch) pendingTouch = hover;
+        render();
+      }
+    } else if ((e.key === "z" || e.key === "Z") && (e.ctrlKey || e.metaKey)) {
+      undo();
+    }
+  });
+
+  document.getElementById("newBtn").addEventListener("click", start);
+  document.getElementById("againBtn").addEventListener("click", start);
+  document.getElementById("undoBtn").addEventListener("click", undo);
+  modeSel.addEventListener("change", () => {
+    try { localStorage.setItem("wallrace-mode", modeSel.value); } catch (_) {}
+    start();
+  });
+  try {
+    const saved = localStorage.getItem("wallrace-mode");
+    if (saved && [...modeSel.options].some(o => o.value === saved)) modeSel.value = saved;
+  } catch (_) {}
+
+  // Exposed for automated tests.
+  window.__wallrace = { newState, pawnMoves, wallLegal, shortest, applyMove, chooseMove, cloneState, get state() { return state; } };
+
+  start();
+})();
+</script>
+</body>
+</html>
