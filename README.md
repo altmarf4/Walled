@@ -1,8 +1,8 @@
-# Wallrace
+# Walled
 
 A two-player strategy board game that runs in the browser. Race your pawn to the far side of a 9×9 board, and use walls to block your opponent. You can never seal anyone in completely.
 
-**Play it:** open `index.html` in any browser, or visit the GitHub Pages site for this repository.
+**Play it:** open `index.html` in any browser, or play online at https://altmarf4.github.io/Walled/
 
 ## Features
 
@@ -30,4 +30,4 @@ A two-player strategy board game that runs in the browser. Race your pawn to the
 
 ## Hosting on GitHub Pages
 
-In the repository, go to **Settings → Pages**, set **Source** to "Deploy from a branch", pick `main` and `/ (root)`, and save. The game will be live at `https://<user>.github.io/<repo>/`.
+In the repository, go to **Settings → Pages**, set **Source** to "Deploy from a branch", pick `main` and `/ (root)`, and save. The game will be live at `https://altmarf4.github.io/Walled/`.

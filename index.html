@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Wallrace</title>
+<title>Walled</title>
 <meta name="description" content="A two-player strategy board game: race to the far side and block your opponent with walls, but never trap them completely.">
 <style>
   :root {
@@ -124,7 +124,7 @@
 <body>
 <div class="wrap">
   <header>
-    <h1>Wallrace</h1>
+    <h1>Walled</h1>
     <p>Reach the far side first. Block with walls, but never seal anyone in.</p>
   </header>
 
@@ -670,16 +670,16 @@
   document.getElementById("againBtn").addEventListener("click", start);
   document.getElementById("undoBtn").addEventListener("click", undo);
   modeSel.addEventListener("change", () => {
-    try { localStorage.setItem("wallrace-mode", modeSel.value); } catch (_) {}
+    try { localStorage.setItem("walled-mode", modeSel.value); } catch (_) {}
     start();
   });
   try {
-    const saved = localStorage.getItem("wallrace-mode");
+    const saved = localStorage.getItem("walled-mode");
     if (saved && [...modeSel.options].some(o => o.value === saved)) modeSel.value = saved;
   } catch (_) {}
 
   // Exposed for automated tests.
-  window.__wallrace = { newState, pawnMoves, wallLegal, shortest, applyMove, chooseMove, cloneState, get state() { return state; } };
+  window.__walled = { newState, pawnMoves, wallLegal, shortest, applyMove, chooseMove, cloneState, get state() { return state; } };
 
   start();
 })();
